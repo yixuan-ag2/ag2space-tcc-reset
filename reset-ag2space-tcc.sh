@@ -116,22 +116,43 @@ if [ -f "$STATUS_FILE" ]; then
   printf '    %s\n' "$(cat "$STATUS_FILE")"
   obs="$(/usr/bin/python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("observed_at",0))' "$STATUS_FILE" 2>/dev/null || echo 0)"
   now="$(date +%s)"
+  # A healthy app rewrites this file every few seconds, so age is what says whether the
+  # values below are evidence at all. Unknown age counts as stale: fail closed.
+  STATUS_STALE=1
+  AGE_MIN="unknown"
   if [ "${obs:-0}" -gt 0 ]; then
     age=$(( now - obs ))
+    AGE_MIN="$(( age / 60 ))"
     if [ "$age" -lt 60 ]; then
+      STATUS_STALE=0
       ok "written ${age}s ago — the app is running and this is CURRENT"
     else
-      hm "written ${age}s ago ($(( age / 60 )) min) — the app is not updating it now, so this is a"
+      hm "written ${age}s ago (${AGE_MIN} min) — the app is not updating it now, so this is a"
       hm "snapshot from its last run, not live truth. Launch the app and re-run to get a live read."
+      if [ -n "$PIDS" ]; then
+        no "the app is RUNNING but has not written this file for ${AGE_MIN} min"
+        hm "a live app rewrites it every few seconds, so the permission writer is not running."
+        hm "That is the finding — not a permissions result. ⌘Q + reopen, then re-run this script."
+      fi
     fi
+  else
+    hm "no observed_at in the file — treating it as NOT current"
   fi
   acc="$(/usr/bin/python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("accessibility_granted"))' "$STATUS_FILE" 2>/dev/null || echo unknown)"
   case "$acc" in
     True|true)  ok "accessibility_granted = true (as the APP sees it)" ;;
     False|false)
-      no "accessibility_granted = FALSE (as the APP sees it)"
-      hm "If System Settings shows the Accessibility toggle ON while this says false, that is a"
-      hm "stale TCC row — the fix is REMOVE, not toggle. Run this script with --reset." ;;
+      if [ "${STATUS_STALE:-1}" -eq 0 ]; then
+        no "accessibility_granted = FALSE (as the APP sees it, and this reading is CURRENT)"
+        hm "If System Settings shows the Accessibility toggle ON while this says false, that is a"
+        hm "stale TCC row — the fix is REMOVE, not toggle. Run this script with --reset."
+      else
+        no "accessibility_granted = FALSE — but from a reading ${AGE_MIN} min old, NOT from now"
+        hm "This is what the app believed at its last write. It is not evidence about the current"
+        hm "grant, so do NOT conclude a stale TCC row and do NOT run --reset on the strength of it."
+        hm "⌘Q the app, reopen, wait ~10s, re-run this script. Only act once the line above says"
+        hm "the reading is CURRENT — resetting now may clear a grant that is already correct."
+      fi ;;
     *) hm "accessibility_granted not present in the file" ;;
   esac
   hm "note: this file reports accessibility only — it does not carry screen-recording or mic state"
