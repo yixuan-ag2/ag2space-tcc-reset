@@ -120,9 +120,11 @@ if [ -f "$STATUS_FILE" ]; then
   # values below are evidence at all. Unknown age counts as stale: fail closed.
   STATUS_STALE=1
   AGE_MIN="unknown"
+  AGE_PHRASE="of unknown age"
   if [ "${obs:-0}" -gt 0 ]; then
     age=$(( now - obs ))
     AGE_MIN="$(( age / 60 ))"
+    AGE_PHRASE="${AGE_MIN} min old"
     if [ "$age" -lt 60 ]; then
       STATUS_STALE=0
       ok "written ${age}s ago — the app is running and this is CURRENT"
@@ -147,7 +149,7 @@ if [ -f "$STATUS_FILE" ]; then
         hm "If System Settings shows the Accessibility toggle ON while this says false, that is a"
         hm "stale TCC row — the fix is REMOVE, not toggle. Run this script with --reset."
       else
-        no "accessibility_granted = FALSE — but from a reading ${AGE_MIN} min old, NOT from now"
+        no "accessibility_granted = FALSE — but from a reading ${AGE_PHRASE}, NOT from now"
         hm "This is what the app believed at its last write. It is not evidence about the current"
         hm "grant, so do NOT conclude a stale TCC row and do NOT run --reset on the strength of it."
         hm "⌘Q the app, reopen, wait ~10s, re-run this script. Only act once the line above says"
